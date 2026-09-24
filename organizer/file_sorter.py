@@ -2,16 +2,17 @@
 
 步骤：
 1. 列出目标文件夹里的文件（默认只看当前层，不进入子文件夹）
-2. 按后缀找到分类
-3. 创建分类文件夹
-4. 移动文件
-5. 记录日志
+2. 按文件内容检测重复
+3. 按后缀找到分类
+4. 创建分类文件夹（重复副本进入“重复文件”）
+5. 移动文件并记录日志
 """
 
 from pathlib import Path
 import shutil
 
-from .config import get_category
+from .config import DUPLICATE_FOLDER, get_category
+from .duplicate import extra_copies, find_duplicate_groups
 from .logger import OrganizerLogger
 
 
@@ -21,6 +22,7 @@ class FileOrganizer:
         self.logger = logger
         self.moved_count = 0
         self.failed_count = 0
+        self.duplicate_count = 0
 
     def organize(self) -> None:
         files = self._list_files()
@@ -29,13 +31,51 @@ class FileOrganizer:
             return
 
         self.logger.info(f"找到 {len(files)} 个文件，开始整理。")
+        extras = self._detect_and_log(files)
 
         for file_path in files:
-            self._move_one_file(file_path)
+            if file_path in extras:
+                self._move_one_file(file_path, DUPLICATE_FOLDER)
+                self.duplicate_count += 1
+            else:
+                self._move_one_file(file_path, get_category(file_path.suffix))
 
         self.logger.info(
-            f"整理完成：成功 {self.moved_count} 个，失败 {self.failed_count} 个。"
+            f"整理完成：成功 {self.moved_count} 个，"
+            f"其中重复副本 {self.duplicate_count} 个，失败 {self.failed_count} 个。"
         )
+
+    def detect_only(self) -> None:
+        """只检测重复文件，不移动任何文件。"""
+        files = self._list_files()
+        if not files:
+            self.logger.warn("这个文件夹里没有可检测的文件。")
+            return
+
+        self.logger.info(f"找到 {len(files)} 个文件，开始检测重复。")
+        self._detect_and_log(files)
+
+    def _detect_and_log(self, files: list[Path]) -> set[Path]:
+        groups = find_duplicate_groups(files)
+        if not groups:
+            self.logger.info("没有发现内容重复的文件。")
+            return set()
+
+        extra_total = 0
+        self.logger.warn(f"发现 {len(groups)} 组内容相同的文件：")
+        for index, group in enumerate(groups, start=1):
+            keep = group[0]
+            copies = group[1:]
+            extra_total += len(copies)
+            names = "、".join(path.name for path in group)
+            self.logger.warn(f"  第 {index} 组（{len(group)} 个）：{names}")
+            self.logger.info(f"    保留：{keep.name}")
+            self.logger.info(
+                "    副本：" + "、".join(path.name for path in copies)
+            )
+
+        self.logger.warn(f"重复副本共 {extra_total} 个。")
+        return extra_copies(groups)
 
     def _list_files(self) -> list[Path]:
         """只整理当前文件夹里的文件，不递归进入子目录。"""
@@ -43,16 +83,14 @@ class FileOrganizer:
         for item in self.folder.iterdir():
             if item.is_dir():
                 continue
-            if item.name.startswith("整理日志_"):
+            if item.name.startswith("整理日志_") or item.name.startswith("重复检测日志_"):
                 continue
             result.append(item)
         return sorted(result)
 
-    def _move_one_file(self, file_path: Path) -> None:
-        category = get_category(file_path.suffix)
+    def _move_one_file(self, file_path: Path, category: str) -> None:
         target_dir = self.folder / category
 
-        # 分类文件夹已经存在时，mkdir 也不会报错
         try:
             target_dir.mkdir(exist_ok=True)
         except OSError as error:

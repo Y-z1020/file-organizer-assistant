@@ -58,8 +58,14 @@ CATEGORY_BY_EXTENSION = {
 # 没有匹配到规则时，放到这个文件夹
 DEFAULT_CATEGORY = "其他"
 
+# 内容重复的副本放到这个文件夹（每组只保留一份在正常分类里）
+DUPLICATE_FOLDER = "重复文件"
+
 # 整理时不要动这些目录（程序自己创建的分类文件夹）
-PROTECTED_FOLDER_NAMES = set(CATEGORY_BY_EXTENSION.values()) | {DEFAULT_CATEGORY}
+PROTECTED_FOLDER_NAMES = set(CATEGORY_BY_EXTENSION.values()) | {
+    DEFAULT_CATEGORY,
+    DUPLICATE_FOLDER,
+}
 
 
 def get_category(extension: str) -> str:

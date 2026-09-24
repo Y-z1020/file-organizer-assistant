@@ -2,7 +2,7 @@
 
 运行方式：
     python main.py
-然后输入要整理的文件夹路径。
+然后输入要整理的文件夹路径，并选择功能。
 """
 
 import sys
@@ -35,11 +35,28 @@ def ask_folder_path() -> Path | None:
     return folder
 
 
-def confirm(folder: Path) -> bool:
-    print(f"\n即将整理：{folder}")
-    print("说明：只会移动该文件夹“当前这一层”的文件，不会进入子文件夹。")
-    print("分类文件夹：" + "、".join(sorted(PROTECTED_FOLDER_NAMES)))
-    answer = input("确认开始整理吗？(y/n)：").strip().lower()
+def ask_action() -> str | None:
+    print("请选择功能：")
+    print("  1. 整理文件（含重复检测，副本移到“重复文件”）")
+    print("  2. 仅检测重复文件（不移动）")
+    choice = input("输入 1 或 2：").strip()
+    if choice == "1":
+        return "organize"
+    if choice == "2":
+        return "detect"
+    print("无效选项。")
+    return None
+
+
+def confirm(folder: Path, action: str) -> bool:
+    print(f"\n目标文件夹：{folder}")
+    print("说明：只会处理该文件夹“当前这一层”的文件，不会进入子文件夹。")
+    if action == "organize":
+        print("分类文件夹：" + "、".join(sorted(PROTECTED_FOLDER_NAMES)))
+        print("内容相同的文件会保留一份到正常分类，其余副本移到“重复文件”。")
+    else:
+        print("本次只检测重复，不会移动或删除任何文件。")
+    answer = input("确认开始吗？(y/n)：").strip().lower()
     return answer in {"y", "yes", "是"}
 
 
@@ -52,17 +69,25 @@ def main() -> None:
     if folder is None:
         return
 
-    if not confirm(folder):
+    action = ask_action()
+    if action is None:
+        return
+
+    if not confirm(folder, action):
         print("已取消。")
         return
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = folder / f"整理日志_{stamp}.txt"
+    prefix = "整理日志" if action == "organize" else "重复检测日志"
+    log_file = folder / f"{prefix}_{stamp}.txt"
     logger = OrganizerLogger(log_file)
 
     logger.info(f"目标文件夹：{folder}")
     organizer = FileOrganizer(folder, logger)
-    organizer.organize()
+    if action == "organize":
+        organizer.organize()
+    else:
+        organizer.detect_only()
     logger.save()
 
 
